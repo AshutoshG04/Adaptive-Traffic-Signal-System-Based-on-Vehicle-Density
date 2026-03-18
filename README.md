@@ -68,12 +68,18 @@ GreenTime = BaseTime + (Vehicles × 2)
 ```bash
 git clone https://github.com/AshutoshG04/Adaptive-Traffic-Signal-System-Based-on-Vehicle-Density.git
 cd Adaptive-Traffic-System
-2️⃣ Install Dependencies
+```
+### 2️⃣ Install Dependencies
+```bash
 pip install -r requirements.txt
-3️⃣ Run the Application
+```
+### 3️⃣ Run the Application
+```bash
 python app.py
+```
 
-📁 Project Structure
+## 📁 Project Structure
+```
 Adaptive-Traffic-System/
 │
 ├── app.py
@@ -93,24 +99,23 @@ Adaptive-Traffic-System/
 ├── requirements.txt
 ├── README.md
 └── .gitignore
+```
+## 📊 Results
 
-📊 Results
+- Achieved ~85% vehicle detection accuracy
+- Improved traffic flow using adaptive signal timing
+- Reduced unnecessary waiting time
 
-Achieved ~85% vehicle detection accuracy
-Improved traffic flow using adaptive signal timing
-Reduced unnecessary waiting time
+## 🔮 Future Enhancements
 
-🔮 Future Enhancements
+- Integration with IoT-based traffic signals (ESP32/PLC)
+- Multi-intersection traffic coordination
+- Cloud deployment for smart city integration
+- Real-time analytics dashboard
 
-Integration with IoT-based traffic signals (ESP32/PLC)
-Multi-intersection traffic coordination
-Cloud deployment for smart city integration
-Real-time analytics dashboard
-
-👨‍💻 Author
+## 👨‍💻 Author
 
 Ashutosh Ghodke
-GitHub: https://github.com/AshutoshG04
 
-⭐ If you like this project
+## ⭐ If you like this project
 Give it a ⭐ on GitHub!
