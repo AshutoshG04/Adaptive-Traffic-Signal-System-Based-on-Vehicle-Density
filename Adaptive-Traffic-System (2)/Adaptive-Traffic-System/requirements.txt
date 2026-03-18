@@ -1,0 +1,14 @@
+ultralytics
+opencv-python
+flask
+numpy
+scipy
+torch
+torchvision
+torchaudio
+pillow
+matplotlib
+psutil
+onnxruntime
+lap
+filterpy

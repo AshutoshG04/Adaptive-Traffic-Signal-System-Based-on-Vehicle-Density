@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS — Adaptive Traffic Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-green: #00ff88;
+            --neon-red: #ff2d55;
+            --neon-cyan: #00e5ff;
+            --neon-amber: #ffaa00;
+            --neon-purple: #bf00ff;
+            --bg-void: #020408;
+            --bg-panel: #060d16;
+            --bg-card: #081220;
+            --border-dim: rgba(0, 229, 255, 0.12);
+            --border-glow: rgba(0, 229, 255, 0.45);
+            --text-primary: #e8f4ff;
+            --text-secondary: rgba(180, 210, 240, 0.65);
+            --text-mono: #7fdbff;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg-void);
+            color: var(--text-primary);
+            font-family: 'Rajdhani', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* === SCANLINE OVERLAY === */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.07) 2px,
+                rgba(0,0,0,0.07) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* === GRID BG === */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* === HEADER === */
+        header {
+            position: relative;
+            z-index: 10;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 30px;
+            padding: 0 30px;
+            height: 70px;
+            background: linear-gradient(90deg, rgba(0,229,255,0.06), transparent 40%);
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, var(--neon-cyan), transparent 60%);
+            box-shadow: 0 0 12px var(--neon-cyan);
+        }
+
+        .logo-group { display: flex; align-items: center; gap: 14px; }
+        .logo-icon { width: 38px; height: 38px; position: relative; display: flex; align-items: center; justify-content: center; }
+        .logo-icon svg { width: 38px; height: 38px; }
+
+        .logo-text h1 {
+            font-family: 'Orbitron', monospace;
+            font-size: 15px; font-weight: 900; letter-spacing: 4px;
+            color: var(--neon-cyan); text-shadow: 0 0 20px rgba(0,229,255,0.8); line-height: 1;
+        }
+
+        .logo-text p {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 9px; letter-spacing: 3px; color: var(--text-secondary); margin-top: 3px;
+        }
+
+        .header-stats { display: flex; gap: 30px; align-items: center; }
+        .hstat { text-align: center; }
+        .hstat-val { font-family: 'Share Tech Mono', monospace; font-size: 18px; color: var(--neon-cyan); text-shadow: 0 0 10px rgba(0,229,255,0.6); line-height: 1; transition: all 0.3s ease; }
+        .hstat-lbl { font-family: 'Rajdhani', sans-serif; font-size: 9px; letter-spacing: 2px; color: var(--text-secondary); margin-top: 2px; }
+        .hstat-divider { width: 1px; height: 30px; background: linear-gradient(to bottom, transparent, var(--border-glow), transparent); }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+
+        .sys-badge {
+            display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+            border: 1px solid rgba(0,255,136,0.3); border-radius: 2px;
+            background: rgba(0,255,136,0.05); font-family: 'Share Tech Mono', monospace;
+            font-size: 10px; letter-spacing: 2px; color: var(--neon-green);
+        }
+
+        .pulse-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green);
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--neon-green); }
+            50% { opacity: 0.4; box-shadow: 0 0 3px var(--neon-green); }
+        }
+
+        .time-display { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-secondary); letter-spacing: 1px; }
+
+        /* === MAIN LAYOUT === */
+        main {
+            position: relative; z-index: 10; display: grid;
+            grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr;
+            gap: 0; height: calc(100vh - 70px);
+        }
+
+        /* === LEFT COLUMN === */
+        .left-col { display: grid; grid-template-rows: 1fr auto; border-right: 1px solid var(--border-dim); overflow: hidden; }
+
+        /* === CAMERA GRID === */
+        .camera-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0; }
+        .camera-cell { position: relative; overflow: hidden; border-right: 1px solid var(--border-dim); border-bottom: 1px solid var(--border-dim); }
+        .camera-cell:nth-child(2n) { border-right: none; }
+        .camera-cell:nth-child(3), .camera-cell:nth-child(4) { border-bottom: none; }
+
+        .cam-placeholder {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            background: #0a1525; display: flex; align-items: center; justify-content: center; overflow: hidden;
+        }
+
+        .cam-placeholder::before {
+            content: ''; position: absolute; inset: 0; z-index: 1;
+            background: radial-gradient(ellipse at 30% 60%, rgba(0,229,255,0.04) 0%, transparent 60%), linear-gradient(135deg, rgba(6,14,28,0.8) 0%, rgba(10,21,37,0.8) 100%);
+            pointer-events: none;
+        }
+
+        /* ADAPTIVE VIDEO FEED FIX */
+        .cam-feed {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; /* Ensures perfect box fit without stretching */
+            display: block; filter: brightness(0.7) contrast(1.1) saturate(0.8);
+            z-index: 2; transition: opacity 0.5s ease;
+        }
+
+        .cam-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+        .cam-overlay::before, .cam-overlay::after { content: ''; position: absolute; width: 20px; height: 20px; transition: all 0.3s ease; }
+        .cam-overlay::before { top: 10px; left: 10px; border-top: 2px solid var(--neon-cyan); border-left: 2px solid var(--neon-cyan); box-shadow: -2px -2px 8px rgba(0,229,255,0.4); }
+        .cam-overlay::after { bottom: 10px; right: 10px; border-bottom: 2px solid var(--neon-cyan); border-right: 2px solid var(--neon-cyan); box-shadow: 2px 2px 8px rgba(0,229,255,0.4); }
+
+        .cam-header {
+            position: absolute; top: 0; left: 0; right: 0; display: flex;
+            justify-content: space-between; align-items: flex-start; padding: 10px 14px;
+            pointer-events: none; z-index: 5;
+        }
+
+        .cam-id { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--neon-cyan); text-shadow: 0 0 8px rgba(0,229,255,0.8); line-height: 1; }
+        .cam-id span { display: block; font-size: 8px; color: var(--text-secondary); margin-top: 2px; }
+        
+        .cam-live { display: flex; align-items: center; gap: 5px; font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1px; color: var(--neon-red); }
+        .cam-live::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red); animation: pulse-glow 1s infinite; }
+
+        .cam-footer {
+            position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 14px;
+            display: flex; justify-content: space-between; align-items: flex-end;
+            pointer-events: none; z-index: 5; background: linear-gradient(to top, rgba(2,4,8,0.9), transparent);
+        }
+
+        .cam-queue-bar { display: flex; flex-direction: column; gap: 2px; }
+        .cam-queue-lbl { font-family: 'Share Tech Mono', monospace; font-size: 8px; color: var(--text-secondary); letter-spacing: 1px; }
+        .queue-bar-track { width: 80px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+        
+        /* SMOOTH QUEUE TRANSITIONS */
+        .queue-bar-fill { height: 100%; border-radius: 2px; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+        .fill-green { background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green); }
+        .fill-amber { background: var(--neon-amber); box-shadow: 0 0 6px var(--neon-amber); }
+        .fill-red { background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red); }
+
+        .cam-signal-dot {
+            width: 14px; height: 14px; border-radius: 50%; background: #1a1a1a;
+            border: 1px solid rgba(255,255,255,0.15); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .cam-signal-dot.active { background: var(--neon-green); box-shadow: 0 0 12px var(--neon-green), 0 0 24px rgba(0,255,136,0.4); border-color: transparent; }
+
+        /* === BOTTOM METRICS BAR === */
+        .metrics-bar { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border-dim); height: 90px; }
+        .metric-cell { padding: 12px 20px; border-right: 1px solid var(--border-dim); position: relative; overflow: hidden; transition: background 0.3s ease; }
+        .metric-cell:last-child { border-right: none; }
+        .metric-cell:hover { background: rgba(0,229,255,0.02); }
+        .metric-lbl { font-family: 'Rajdhani', sans-serif; font-size: 9px; letter-spacing: 3px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; }
+        .metric-val { font-family: 'Orbitron', monospace; font-size: 22px; font-weight: 700; line-height: 1; transition: all 0.3s ease; }
+        .metric-val.cyan { color: var(--neon-cyan); text-shadow: 0 0 15px rgba(0,229,255,0.6); }
+        .metric-val.green { color: var(--neon-green); text-shadow: 0 0 15px rgba(0,255,136,0.6); }
+        .metric-val.amber { color: var(--neon-amber); text-shadow: 0 0 15px rgba(255,170,0,0.6); }
+        .metric-val.purple { color: var(--neon-purple); text-shadow: 0 0 15px rgba(191,0,255,0.6); }
+        .metric-sub { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--text-secondary); margin-top: 3px; transition: color 0.3s ease; }
+
+        /* === RIGHT PANEL === */
+        .right-panel { display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+        .right-panel::-webkit-scrollbar { width: 3px; }
+        .right-panel::-webkit-scrollbar-track { background: transparent; }
+        .right-panel::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+        .panel-section { padding: 20px; border-bottom: 1px solid var(--border-dim); position: relative; }
+        .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+        .section-title-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border-glow), transparent); }
+        .section-title h2 { font-family: 'Orbitron', monospace; font-size: 9px; font-weight: 600; letter-spacing: 4px; color: var(--text-secondary); white-space: nowrap; }
+
+        /* === SIGNAL PHASE === */
+        .signal-phase-display { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+        .signal-lane { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .signal-light-housing { width: 44px; background: #06101e; border: 1px solid var(--border-dim); border-radius: 10px; padding: 8px 0; display: flex; flex-direction: column; align-items: center; gap: 5px; position: relative; transition: all 0.4s ease; }
+        
+        .signal-bulb { width: 24px; height: 24px; border-radius: 50%; position: relative; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .signal-bulb.red-b { background: rgba(255,45,85,0.15); border: 1px solid rgba(255,45,85,0.3); }
+        .signal-bulb.amber-b { background: rgba(255,170,0,0.08); border: 1px solid rgba(255,170,0,0.2); }
+        .signal-bulb.green-b { background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2); }
+
+        .signal-lane.active .signal-bulb.red-b { background: rgba(255,45,85,0.05); border-color: transparent; }
+        .signal-lane.active .signal-bulb.green-b { background: var(--neon-green); border-color: transparent; box-shadow: 0 0 12px var(--neon-green), 0 0 30px rgba(0,255,136,0.5), inset 0 0 8px rgba(255,255,255,0.2); }
+        .signal-lane.active .signal-light-housing { border-color: rgba(0,255,136,0.4); box-shadow: 0 0 20px rgba(0,255,136,0.1); }
+
+        .signal-lane-id { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1px; color: var(--text-secondary); transition: all 0.3s ease; }
+        .signal-lane.active .signal-lane-id { color: var(--neon-green); text-shadow: 0 0 8px rgba(0,255,136,0.6); }
+
+        /* Timer Arc */
+        .timer-arc-wrap { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+        .timer-arc-container { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+        .timer-arc-svg { transform: rotate(-90deg); width: 64px; height: 64px; }
+        .arc-track { fill: none; stroke: rgba(0,229,255,0.1); stroke-width: 3; }
+        .arc-progress { fill: none; stroke: var(--neon-cyan); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 175; stroke-dashoffset: 0; filter: drop-shadow(0 0 4px var(--neon-cyan)); transition: stroke-dashoffset 1s linear; }
+        
+        .arc-center-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        .arc-seconds { font-family: 'Orbitron', monospace; font-size: 15px; font-weight: 700; color: var(--neon-cyan); text-shadow: 0 0 10px rgba(0,229,255,0.8); line-height: 1; transition: color 0.3s ease; }
+        .arc-unit { font-family: 'Share Tech Mono', monospace; font-size: 7px; color: var(--text-secondary); letter-spacing: 1px; }
+
+        .timer-info { flex: 1; }
+        .timer-phase-label { font-family: 'Rajdhani', sans-serif; font-size: 10px; letter-spacing: 3px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; }
+        .timer-phase-value { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--neon-cyan); transition: all 0.3s ease; }
+
+        /* === QUEUE BARS === */
+        .queue-lanes { display: flex; flex-direction: column; gap: 10px; }
+        .queue-row { display: flex; align-items: center; gap: 10px; }
+        .queue-lane-id { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-secondary); width: 20px; flex-shrink: 0; }
+        .queue-track { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; position: relative; }
+        .queue-fill { height: 100%; border-radius: 3px; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+        .queue-fill::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: rgba(255,255,255,0.6); border-radius: 0 3px 3px 0; }
+        .queue-count { font-family: 'Share Tech Mono', monospace; font-size: 11px; width: 24px; text-align: right; flex-shrink: 0; transition: color 0.8s ease; }
+
+        /* === DENSITY RING === */
+        .density-display { display: flex; align-items: center; gap: 20px; }
+        .density-ring { position: relative; width: 80px; height: 80px; flex-shrink: 0; }
+        .density-ring svg { transform: rotate(-90deg); width: 80px; height: 80px; }
+        .density-track { fill: none; stroke: rgba(191,0,255,0.1); stroke-width: 4; }
+        .density-progress { fill: none; stroke: var(--neon-purple); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 220; filter: drop-shadow(0 0 6px var(--neon-purple)); transition: stroke-dashoffset 1s ease; }
+        
+        .density-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+        .density-val { font-family: 'Orbitron', monospace; font-size: 16px; font-weight: 700; color: var(--neon-purple); text-shadow: 0 0 12px rgba(191,0,255,0.8); transition: all 0.3s ease; }
+
+        .density-stats { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .density-stat { display: flex; justify-content: space-between; align-items: center; }
+        .density-stat-lbl { font-family: 'Rajdhani', sans-serif; font-size: 10px; letter-spacing: 2px; color: var(--text-secondary); }
+        .density-stat-val { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-primary); transition: color 0.5s ease; }
+
+        /* === OVERRIDE PANEL === */
+        .override-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .override-btn {
+            position: relative; padding: 14px 10px; background: rgba(37, 99, 235, 0.08);
+            border: 1px solid rgba(37, 99, 235, 0.25); border-radius: 4px; cursor: pointer;
+            font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600;
+            letter-spacing: 2px; color: #7caeff; text-transform: uppercase;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden;
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+
+        .override-btn::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(37,99,235,0.15), transparent);
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+
+        .override-btn:hover { border-color: rgba(37,99,235,0.6); color: #a8c8ff; box-shadow: 0 0 15px rgba(37,99,235,0.2), inset 0 0 15px rgba(37,99,235,0.05); transform: translateY(-2px); }
+        .override-btn:hover::before { opacity: 1; }
+        .override-btn:active { transform: translateY(0); box-shadow: 0 0 8px rgba(37,99,235,0.3); transition: all 0.1s; }
+        .override-btn.active-override { border-color: rgba(0,255,136,0.6); background: rgba(0,255,136,0.1); color: var(--neon-green); box-shadow: 0 0 20px rgba(0,255,136,0.2); transform: translateY(0); pointer-events: none; }
+
+        .btn-lane-num { font-family: 'Orbitron', monospace; font-size: 18px; font-weight: 900; line-height: 1; transition: color 0.3s ease; }
+        .btn-lane-lbl { font-size: 8px; letter-spacing: 2px; transition: color 0.3s ease; }
+
+        /* === ACTIVITY LOG === */
+        .activity-log { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; scroll-behavior: smooth; }
+        .activity-log::-webkit-scrollbar { width: 2px; }
+        .activity-log::-webkit-scrollbar-thumb { background: var(--border-glow); }
+        .log-entry {
+            display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px;
+            background: rgba(0,229,255,0.03); border-left: 2px solid transparent; border-radius: 0 3px 3px 0;
+            font-family: 'Share Tech Mono', monospace; font-size: 9px; animation: log-slide-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes log-slide-in {
+            from { opacity: 0; transform: translateX(-15px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .log-entry.info { border-left-color: var(--neon-cyan); }
+        .log-entry.warning { border-left-color: var(--neon-amber); }
+        .log-entry.override { border-left-color: var(--neon-purple); }
+        .log-entry.success { border-left-color: var(--neon-green); }
+        .log-time { color: var(--text-secondary); flex-shrink: 0; }
+        .log-msg { color: var(--text-primary); line-height: 1.4; }
+
+        /* === ROAD SKETCH IN CAM === */
+        .road-svg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.4; z-index: 0; }
+
+        /* === INTERSECTION MINI MAP === */
+        .intersection-map { display: flex; justify-content: center; align-items: center; padding: 10px; }
+        .imap { position: relative; width: 120px; height: 120px; }
+        .imap-road-h { position: absolute; top: 50%; left: 0; right: 0; height: 30%; transform: translateY(-50%); background: rgba(255,255,255,0.05); border-top: 1px solid var(--border-dim); border-bottom: 1px solid var(--border-dim); transition: all 0.3s ease; }
+        .imap-road-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 30%; transform: translateX(-50%); background: rgba(255,255,255,0.05); border-left: 1px solid var(--border-dim); border-right: 1px solid var(--border-dim); transition: all 0.3s ease; }
+        .imap-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30%; height: 30%; background: rgba(0,229,255,0.05); border: 1px solid var(--border-glow); box-shadow: 0 0 15px rgba(0,229,255,0.15); transition: all 0.3s ease; }
+        
+        .imap-light { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .imap-light.lit { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green), 0 0 20px rgba(0,255,136,0.4); border-color: transparent; }
+
+        .imap-l1 { top: 10px; left: 50%; transform: translateX(-50%); }
+        .imap-l2 { right: 10px; top: 50%; transform: translateY(-50%); }
+        .imap-l3 { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        .imap-l4 { left: 10px; top: 50%; transform: translateY(-50%); }
+
+        @keyframes flicker {
+            0%, 95%, 100% { opacity: 1; }
+            96% { opacity: 0.8; }
+            97% { opacity: 1; }
+            98% { opacity: 0.6; }
+            99% { opacity: 1; }
+        }
+        .neon-flicker { animation: flicker 8s infinite; }
+
+        @media (max-width: 1024px) {
+            main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; height: auto; }
+            .left-col { border-right: none; border-bottom: 1px solid var(--border-dim); }
+            .camera-grid { height: 50vw; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo-group">
+        <div class="logo-icon">
+            <svg viewBox="0 0 38 38" fill="none">
+                <polygon points="19,3 35,12 35,26 19,35 3,26 3,12" fill="none" stroke="rgba(0,229,255,0.4)" stroke-width="1"/>
+                <polygon points="19,8 30,14 30,24 19,30 8,24 8,14" fill="none" stroke="rgba(0,229,255,0.7)" stroke-width="1"/>
+                <circle cx="19" cy="19" r="5" fill="none" stroke="#00e5ff" stroke-width="1.5"/>
+                <circle cx="19" cy="19" r="2" fill="#00e5ff"/>
+                <line x1="19" y1="8" x2="19" y2="14" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="30" y1="14" x2="24" y2="17" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="30" y1="24" x2="24" y2="21" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="19" y1="30" x2="19" y2="24" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="8" y1="24" x2="14" y2="21" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="8" y1="14" x2="14" y2="17" stroke="#00e5ff" stroke-width="1"/>
+            </svg>
+        </div>
+        <div class="logo-text">
+            <h1 class="neon-flicker">NEXUS</h1>
+            <p>ADAPTIVE TRAFFIC CONTROL v4.2</p>
+        </div>
+    </div>
+
+    <div class="header-stats">
+        <div class="hstat">
+            <div class="hstat-val" id="hVehicles">—</div>
+            <div class="hstat-lbl">VEHICLES / HR</div>
+        </div>
+        <div class="hstat-divider"></div>
+        <div class="hstat">
+            <div class="hstat-val" id="hThroughput">—</div>
+            <div class="hstat-lbl">THROUGHPUT %</div>
+        </div>
+        <div class="hstat-divider"></div>
+        <div class="hstat">
+            <div class="hstat-val" id="hWaitAvg">—</div>
+            <div class="hstat-lbl">AVG WAIT SEC</div>
+        </div>
+        <div class="hstat-divider"></div>
+        <div class="hstat">
+            <div class="hstat-val" id="hCycles">—</div>
+            <div class="hstat-lbl">CYCLE COUNT</div>
+        </div>
+    </div>
+
+    <div class="header-right">
+        <div class="sys-badge">
+            <div class="pulse-dot"></div>
+            SYSTEM ONLINE
+        </div>
+        <div class="time-display" id="clockDisplay">--:--:--</div>
+    </div>
+</header>
+
+<main>
+    <div class="left-col">
+        <div class="camera-grid">
+            <div class="camera-cell">
+                <div class="cam-placeholder">
+                    <svg class="road-svg" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice">
+                        <defs>
+                            <linearGradient id="roadGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#0a1525"/>
+                                <stop offset="100%" stop-color="#060e1c"/>
+                            </linearGradient>
+                        </defs>
+                        <rect width="300" height="200" fill="url(#roadGrad)"/>
+                        <path d="M80,200 L130,80 L170,80 L220,200" fill="#1a2535" stroke="rgba(0,229,255,0.15)" stroke-width="1"/>
+                        <line x1="150" y1="200" x2="150" y2="80" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="10,10"/>
+                        <rect x="118" y="140" width="18" height="28" rx="3" fill="rgba(0,229,255,0.25)" stroke="rgba(0,229,255,0.5)" stroke-width="0.5"/>
+                        <rect x="142" y="110" width="18" height="28" rx="3" fill="rgba(0,229,255,0.15)" stroke="rgba(0,229,255,0.3)" stroke-width="0.5"/>
+                        <rect x="165" y="155" width="18" height="28" rx="3" fill="rgba(0,229,255,0.2)" stroke="rgba(0,229,255,0.4)" stroke-width="0.5"/>
+                        <circle cx="150" cy="60" r="8" fill="rgba(0,255,136,0)" id="sig1circle"/>
+                        <circle cx="150" cy="60" r="3" fill="#00ff88" class="sig1-dot"/>
+                    </svg>
+                    <img src="/video_feed/0" class="cam-feed" onerror="this.style.display='none'" alt="">
+                </div>
+                <div class="cam-overlay"></div>
+                <div class="cam-header">
+                    <div class="cam-id">CAM-01 <span>NORTH APPROACH</span></div>
+                    <div class="cam-live">LIVE</div>
+                </div>
+                <div class="cam-footer">
+                    <div class="cam-queue-bar">
+                        <div class="cam-queue-lbl">QUEUE</div>
+                        <div class="queue-bar-track">
+                            <div class="queue-bar-fill fill-green" id="qbar1" style="width:40%"></div>
+                        </div>
+                    </div>
+                    <div class="cam-signal-dot" id="cdot1"></div>
+                </div>
+            </div>
+
+            <div class="camera-cell">
+                <div class="cam-placeholder">
+                    <svg class="road-svg" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice">
+                        <rect width="300" height="200" fill="url(#roadGrad)"/>
+                        <path d="M0,60 L220,100 L220,120 L0,160" fill="#1a2535" stroke="rgba(0,229,255,0.1)" stroke-width="1"/>
+                        <line x1="0" y1="110" x2="220" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="10,10"/>
+                        <rect x="40" y="92" width="28" height="18" rx="3" fill="rgba(0,229,255,0.2)" stroke="rgba(0,229,255,0.4)" stroke-width="0.5"/>
+                        <rect x="100" y="96" width="28" height="18" rx="3" fill="rgba(0,229,255,0.15)" stroke="rgba(0,229,255,0.3)" stroke-width="0.5"/>
+                        <rect x="155" y="93" width="28" height="18" rx="3" fill="rgba(0,229,255,0.25)" stroke="rgba(0,229,255,0.5)" stroke-width="0.5"/>
+                    </svg>
+                    <img src="/video_feed/1" class="cam-feed" onerror="this.style.display='none'" alt="">
+                </div>
+                <div class="cam-overlay"></div>
+                <div class="cam-header">
+                    <div class="cam-id">CAM-02 <span>EAST APPROACH</span></div>
+                    <div class="cam-live">LIVE</div>
+                </div>
+                <div class="cam-footer">
+                    <div class="cam-queue-bar">
+                        <div class="cam-queue-lbl">QUEUE</div>
+                        <div class="queue-bar-track">
+                            <div class="queue-bar-fill fill-amber" id="qbar2" style="width:65%"></div>
+                        </div>
+                    </div>
+                    <div class="cam-signal-dot" id="cdot2"></div>
+                </div>
+            </div>
+
+            <div class="camera-cell">
+                <div class="cam-placeholder">
+                    <svg class="road-svg" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice">
+                        <rect width="300" height="200" fill="url(#roadGrad)"/>
+                        <path d="M80,0 L130,120 L170,120 L220,0" fill="#1a2535" stroke="rgba(0,229,255,0.1)" stroke-width="1"/>
+                        <line x1="150" y1="0" x2="150" y2="120" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="10,10"/>
+                        <rect x="118" y="40" width="18" height="28" rx="3" fill="rgba(0,229,255,0.15)" stroke="rgba(0,229,255,0.3)" stroke-width="0.5"/>
+                        <rect x="142" y="70" width="18" height="28" rx="3" fill="rgba(0,229,255,0.2)" stroke="rgba(0,229,255,0.4)" stroke-width="0.5"/>
+                    </svg>
+                    <img src="/video_feed/2" class="cam-feed" onerror="this.style.display='none'" alt="">
+                </div>
+                <div class="cam-overlay"></div>
+                <div class="cam-header">
+                    <div class="cam-id">CAM-03 <span>SOUTH APPROACH</span></div>
+                    <div class="cam-live">LIVE</div>
+                </div>
+                <div class="cam-footer">
+                    <div class="cam-queue-bar">
+                        <div class="cam-queue-lbl">QUEUE</div>
+                        <div class="queue-bar-track">
+                            <div class="queue-bar-fill fill-red" id="qbar3" style="width:85%"></div>
+                        </div>
+                    </div>
+                    <div class="cam-signal-dot" id="cdot3"></div>
+                </div>
+            </div>
+
+            <div class="camera-cell">
+                <div class="cam-placeholder">
+                    <svg class="road-svg" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice">
+                        <rect width="300" height="200" fill="url(#roadGrad)"/>
+                        <path d="M300,60 L80,100 L80,120 L300,160" fill="#1a2535" stroke="rgba(0,229,255,0.1)" stroke-width="1"/>
+                        <line x1="300" y1="110" x2="80" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="10,10"/>
+                        <rect x="230" y="93" width="28" height="18" rx="3" fill="rgba(0,229,255,0.2)" stroke="rgba(0,229,255,0.4)" stroke-width="0.5"/>
+                        <rect x="165" y="95" width="28" height="18" rx="3" fill="rgba(0,229,255,0.12)" stroke="rgba(0,229,255,0.25)" stroke-width="0.5"/>
+                    </svg>
+                    <img src="/video_feed/3" class="cam-feed" onerror="this.style.display='none'" alt="">
+                </div>
+                <div class="cam-overlay"></div>
+                <div class="cam-header">
+                    <div class="cam-id">CAM-04 <span>WEST APPROACH</span></div>
+                    <div class="cam-live">LIVE</div>
+                </div>
+                <div class="cam-footer">
+                    <div class="cam-queue-bar">
+                        <div class="cam-queue-lbl">QUEUE</div>
+                        <div class="queue-bar-track">
+                            <div class="queue-bar-fill fill-green" id="qbar4" style="width:30%"></div>
+                        </div>
+                    </div>
+                    <div class="cam-signal-dot" id="cdot4"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-bar">
+            <div class="metric-cell">
+                <div class="metric-lbl">ACTIVE LANE</div>
+                <div class="metric-val cyan" id="activeLaneText">—</div>
+                <div class="metric-sub" id="activeLaneDir">INITIALIZING</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-lbl">GREEN DURATION</div>
+                <div class="metric-val green" id="timerText">—</div>
+                <div class="metric-sub">SECONDS REMAINING</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-lbl">QUEUE SUM</div>
+                <div class="metric-val amber" id="queueTotal">—</div>
+                <div class="metric-sub" id="queueData">LOADING...</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-lbl">SYSTEM DENSITY</div>
+                <div class="metric-val purple" id="densityData">—</div>
+                <div class="metric-sub">VEHICLES / LANE</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+
+        <div class="panel-section">
+            <div class="section-title">
+                <h2>SIGNAL PHASE</h2>
+                <div class="section-title-line"></div>
+            </div>
+
+            <div class="signal-phase-display" id="signalLanes">
+                <div class="signal-lane" id="sl1">
+                    <div class="signal-light-housing">
+                        <div class="signal-bulb red-b"></div>
+                        <div class="signal-bulb amber-b"></div>
+                        <div class="signal-bulb green-b"></div>
+                    </div>
+                    <div class="signal-lane-id">L1</div>
+                </div>
+                <div class="signal-lane" id="sl2">
+                    <div class="signal-light-housing">
+                        <div class="signal-bulb red-b"></div>
+                        <div class="signal-bulb amber-b"></div>
+                        <div class="signal-bulb green-b"></div>
+                    </div>
+                    <div class="signal-lane-id">L2</div>
+                </div>
+                <div class="signal-lane" id="sl3">
+                    <div class="signal-light-housing">
+                        <div class="signal-bulb red-b"></div>
+                        <div class="signal-bulb amber-b"></div>
+                        <div class="signal-bulb green-b"></div>
+                    </div>
+                    <div class="signal-lane-id">L3</div>
+                </div>
+                <div class="signal-lane" id="sl4">
+                    <div class="signal-light-housing">
+                        <div class="signal-bulb red-b"></div>
+                        <div class="signal-bulb amber-b"></div>
+                        <div class="signal-bulb green-b"></div>
+                    </div>
+                    <div class="signal-lane-id">L4</div>
+                </div>
+            </div>
+
+            <div class="timer-arc-wrap">
+                <div class="timer-arc-container">
+                    <svg class="timer-arc-svg" viewBox="0 0 64 64">
+                        <circle class="arc-track" cx="32" cy="32" r="28"/>
+                        <circle class="arc-progress" id="arcProgress" cx="32" cy="32" r="28"/>
+                    </svg>
+                    <div class="arc-center-text">
+                        <div class="arc-seconds" id="arcSeconds">—</div>
+                        <div class="arc-unit">SEC</div>
+                    </div>
+                </div>
+                <div class="timer-info">
+                    <div class="timer-phase-label">PHASE STATUS</div>
+                    <div class="timer-phase-value" id="phaseStatus">INITIALIZING</div>
+                    <div class="timer-phase-label" style="margin-top:8px;">NEXT CYCLE</div>
+                    <div class="timer-phase-value" id="nextCycle">—</div>
+                </div>
+            </div>
+
+            <div class="intersection-map">
+                <div class="imap">
+                    <div class="imap-road-h"></div>
+                    <div class="imap-road-v"></div>
+                    <div class="imap-center"></div>
+                    <div class="imap-light imap-l1" id="iml1"></div>
+                    <div class="imap-light imap-l2" id="iml2"></div>
+                    <div class="imap-light imap-l3" id="iml3"></div>
+                    <div class="imap-light imap-l4" id="iml4"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">
+                <h2>QUEUE ANALYSIS</h2>
+                <div class="section-title-line"></div>
+            </div>
+            <div class="queue-lanes">
+                <div class="queue-row">
+                    <div class="queue-lane-id" style="color:var(--neon-cyan)">N</div>
+                    <div class="queue-track"><div class="queue-fill fill-green" id="ql1" style="width:40%"></div></div>
+                    <div class="queue-count" style="color:var(--neon-green)" id="qv1">—</div>
+                </div>
+                <div class="queue-row">
+                    <div class="queue-lane-id" style="color:var(--neon-cyan)">E</div>
+                    <div class="queue-track"><div class="queue-fill fill-amber" id="ql2" style="width:65%"></div></div>
+                    <div class="queue-count" style="color:var(--neon-amber)" id="qv2">—</div>
+                </div>
+                <div class="queue-row">
+                    <div class="queue-lane-id" style="color:var(--neon-cyan)">S</div>
+                    <div class="queue-track"><div class="queue-fill fill-red" id="ql3" style="width:85%"></div></div>
+                    <div class="queue-count" style="color:var(--neon-red)" id="qv3">—</div>
+                </div>
+                <div class="queue-row">
+                    <div class="queue-lane-id" style="color:var(--neon-cyan)">W</div>
+                    <div class="queue-track"><div class="queue-fill fill-green" id="ql4" style="width:30%"></div></div>
+                    <div class="queue-count" style="color:var(--neon-green)" id="qv4">—</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">
+                <h2>SYSTEM DENSITY</h2>
+                <div class="section-title-line"></div>
+            </div>
+            <div class="density-display">
+                <div class="density-ring">
+                    <svg viewBox="0 0 80 80">
+                        <circle class="density-track" cx="40" cy="40" r="35"/>
+                        <circle class="density-progress" id="densityArc" cx="40" cy="40" r="35" stroke-dashoffset="110"/>
+                    </svg>
+                    <div class="density-center">
+                        <div class="density-val" id="densityRingVal">—</div>
+                    </div>
+                </div>
+                <div class="density-stats">
+                    <div class="density-stat">
+                        <div class="density-stat-lbl">PEAK LOAD</div>
+                        <div class="density-stat-val" id="dsPeak">—</div>
+                    </div>
+                    <div class="density-stat">
+                        <div class="density-stat-lbl">AVG DENSITY</div>
+                        <div class="density-stat-val" id="dsAvg">—</div>
+                    </div>
+                    <div class="density-stat">
+                        <div class="density-stat-lbl">STATUS</div>
+                        <div class="density-stat-val" id="dsStatus" style="color:var(--neon-green)">OPTIMAL</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">
+                <h2>MANUAL OVERRIDE</h2>
+                <div class="section-title-line"></div>
+            </div>
+            <div class="override-grid">
+                <button class="override-btn" onclick="overrideSignal(0)" id="ovr0">
+                    <div class="btn-lane-num">01</div>
+                    <div class="btn-lane-lbl">NORTH LANE</div>
+                </button>
+                <button class="override-btn" onclick="overrideSignal(1)" id="ovr1">
+                    <div class="btn-lane-num">02</div>
+                    <div class="btn-lane-lbl">EAST LANE</div>
+                </button>
+                <button class="override-btn" onclick="overrideSignal(2)" id="ovr2">
+                    <div class="btn-lane-num">03</div>
+                    <div class="btn-lane-lbl">SOUTH LANE</div>
+                </button>
+                <button class="override-btn" onclick="overrideSignal(3)" id="ovr3">
+                    <div class="btn-lane-num">04</div>
+                    <div class="btn-lane-lbl">WEST LANE</div>
+                </button>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">
+                <h2>ACTIVITY LOG</h2>
+                <div class="section-title-line"></div>
+            </div>
+            <div class="activity-log" id="activityLog">
+                <div class="log-entry info">
+                    <span class="log-time" id="initTime">--:--:--</span>
+                    <span class="log-msg">System initialized. Awaiting traffic data...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    // === CLOCK ===
+    function updateClock() {
+        const now = new Date();
+        const t = now.toTimeString().split(' ')[0];
+        document.getElementById('clockDisplay').textContent = t;
+        document.getElementById('initTime').textContent = t;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // === STATE ===
+    let cycleCount = 0;
+    let prevActive = -1;
+    let maxGreen = 60;
+    const dirLabels = ['NORTH', 'EAST', 'SOUTH', 'WEST'];
+
+    // === SIMULATED STATS ===
+    let simStats = { vehicles: 1247, throughput: 87, waitAvg: 23 };
+    document.getElementById('hVehicles').textContent = simStats.vehicles.toLocaleString();
+    document.getElementById('hThroughput').textContent = simStats.throughput + '%';
+    document.getElementById('hWaitAvg').textContent = simStats.waitAvg;
+    document.getElementById('hCycles').textContent = cycleCount;
+
+    // === LOG ===
+    function addLog(msg, type='info') {
+        const log = document.getElementById('activityLog');
+        const t = new Date().toTimeString().split(' ')[0];
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type}`;
+        entry.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${msg}</span>`;
+        log.insertBefore(entry, log.firstChild);
+        if (log.children.length > 20) log.removeChild(log.lastChild);
+    }
+
+    // === QUEUE COLOR CLASS ===
+    function queueClass(pct) {
+        if (pct < 40) return 'fill-green';
+        if (pct < 70) return 'fill-amber';
+        return 'fill-red';
+    }
+
+    function queueColor(pct) {
+        if (pct < 40) return 'var(--neon-green)';
+        if (pct < 70) return 'var(--neon-amber)';
+        return 'var(--neon-red)';
+    }
+
+    // === UPDATE DASHBOARD ===
+    function updateDashboard() {
+        fetch("/traffic_data")
+            .then(r => r.json())
+            .then(data => {
+                const active = data.active_lane;
+                const remaining = data.remaining;
+                const queues = data.queues;
+                const density = data.density;
+
+                // Active lane changed
+                if (active !== prevActive) {
+                    cycleCount++;
+                    document.getElementById('hCycles').textContent = cycleCount;
+                    addLog(`Signal switched to LANE ${active+1} — ${dirLabels[active]}`, 'success');
+                    prevActive = active;
+                    maxGreen = remaining + 1;
+                }
+
+                // Signal lights
+                for (let i = 1; i <= 4; i++) {
+                    const sl = document.getElementById(`sl${i}`);
+                    const cdot = document.getElementById(`cdot${i}`);
+                    const iml = document.getElementById(`iml${i}`);
+                    if (i - 1 === active) {
+                        sl.classList.add('active');
+                        cdot.classList.add('active');
+                        iml.classList.add('lit');
+                    } else {
+                        sl.classList.remove('active');
+                        cdot.classList.remove('active');
+                        iml.classList.remove('lit');
+                    }
+                }
+
+                // Override buttons
+                for (let i = 0; i <= 3; i++) {
+                    document.getElementById(`ovr${i}`).classList.toggle('active-override', i === active);
+                }
+
+                // Bottom metrics
+                document.getElementById('activeLaneText').textContent = `L${active+1}`;
+                document.getElementById('activeLaneDir').textContent = dirLabels[active] + ' APPROACH';
+                document.getElementById('timerText').textContent = remaining;
+                document.getElementById('arcSeconds').textContent = remaining;
+                document.getElementById('phaseStatus').textContent = `LANE ${active+1} GREEN`;
+                document.getElementById('nextCycle').textContent = `L${(active+1)%4+1} PENDING`;
+
+                // Timer arc
+                const arcCircumference = 175.9;
+                const pct = remaining / maxGreen;
+                const offset = arcCircumference * (1 - pct);
+                document.getElementById('arcProgress').style.strokeDashoffset = offset;
+
+                // Queues
+                const maxQ = Math.max(...queues, 1);
+                const total = queues.reduce((a, b) => a + b, 0);
+                document.getElementById('queueTotal').textContent = total;
+                document.getElementById('queueData').textContent = queues.join(' · ');
+
+                queues.forEach((q, i) => {
+                    const pct = Math.min((q / maxQ) * 100, 100);
+                    const cls = queueClass(pct);
+                    const col = queueColor(pct);
+
+                    // Side panel queue bars
+                    const ql = document.getElementById(`ql${i+1}`);
+                    ql.style.width = pct + '%';
+                    
+                    // We remove all fills and add the exact right one for smooth morphing
+                    ql.classList.remove('fill-green', 'fill-amber', 'fill-red');
+                    ql.classList.add(cls);
+                    
+                    document.getElementById(`qv${i+1}`).textContent = q;
+                    document.getElementById(`qv${i+1}`).style.color = col;
+
+                    // Camera queue bars
+                    const qbar = document.getElementById(`qbar${i+1}`);
+                    qbar.style.width = pct + '%';
+                    qbar.classList.remove('fill-green', 'fill-amber', 'fill-red');
+                    qbar.classList.add(cls);
+                });
+
+                // Density - **BUG FIX HERE** Formatting the raw float to 1 decimal place
+                const densityNum = parseFloat(density) || 0;
+                const formattedDensity = densityNum.toFixed(1); 
+                document.getElementById('densityData').textContent = formattedDensity;
+                document.getElementById('densityRingVal').textContent = formattedDensity;
+                
+                document.getElementById('dsPeak').textContent = Math.max(...queues);
+                document.getElementById('dsAvg').textContent = (total / 4).toFixed(1);
+
+                const densityPct = Math.min(densityNum / 30, 1);
+                const densityCirc = 220;
+                document.getElementById('densityArc').style.strokeDashoffset = densityCirc * (1 - densityPct);
+
+                if (densityPct < 0.4) {
+                    document.getElementById('dsStatus').textContent = 'OPTIMAL';
+                    document.getElementById('dsStatus').style.color = 'var(--neon-green)';
+                } else if (densityPct < 0.7) {
+                    document.getElementById('dsStatus').textContent = 'MODERATE';
+                    document.getElementById('dsStatus').style.color = 'var(--neon-amber)';
+                } else {
+                    document.getElementById('dsStatus').textContent = 'CONGESTED';
+                    document.getElementById('dsStatus').style.color = 'var(--neon-red)';
+                }
+
+                // Update header stats periodically
+                simStats.vehicles += Math.floor(Math.random() * 3 - 1);
+                document.getElementById('hVehicles').textContent = simStats.vehicles.toLocaleString();
+            })
+            .catch(() => {
+                // Demo mode — no server
+                runDemoMode();
+            });
+    }
+
+    // === DEMO MODE (no backend) ===
+    let demoActive = 0;
+    let demoTimer = 30;
+    let demoQueues = [4, 7, 9, 3];
+    let demoMaxTimer = 30;
+
+    function runDemoMode() {
+        demoTimer--;
+        if (demoTimer <= 0) {
+            demoActive = (demoActive + 1) % 4;
+            demoTimer = 20 + Math.floor(Math.random() * 20);
+            demoMaxTimer = demoTimer;
+            demoQueues = demoQueues.map(() => Math.floor(Math.random() * 14) + 1);
+            cycleCount++;
+            document.getElementById('hCycles').textContent = cycleCount;
+            addLog(`Auto-cycle → LANE ${demoActive+1} — ${dirLabels[demoActive]}`, 'success');
+        }
+
+        const active = demoActive;
+        const remaining = demoTimer;
+        const queues = demoQueues;
+        const rawDensity = (queues.reduce((a,b)=>a+b,0)/4);
+        const densityNum = parseFloat(rawDensity) || 0;
+        const formattedDensity = densityNum.toFixed(1); // Formatting here too just to be consistent
+
+        // Lights
+        for (let i = 1; i <= 4; i++) {
+            const sl = document.getElementById(`sl${i}`);
+            const cdot = document.getElementById(`cdot${i}`);
+            const iml = document.getElementById(`iml${i}`);
+            if (i - 1 === active) { sl.classList.add('active'); cdot.classList.add('active'); iml.classList.add('lit'); }
+            else { sl.classList.remove('active'); cdot.classList.remove('active'); iml.classList.remove('lit'); }
+        }
+
+        for (let i = 0; i <= 3; i++) {
+            document.getElementById(`ovr${i}`).classList.toggle('active-override', i === active);
+        }
+
+        document.getElementById('activeLaneText').textContent = `L${active+1}`;
+        document.getElementById('activeLaneDir').textContent = dirLabels[active] + ' APPROACH';
+        document.getElementById('timerText').textContent = remaining;
+        document.getElementById('arcSeconds').textContent = remaining;
+        document.getElementById('phaseStatus').textContent = `LANE ${active+1} GREEN`;
+        document.getElementById('nextCycle').textContent = `L${(active+1)%4+1} PENDING`;
+
+        const arcCircumference = 175.9;
+        const arcPct = remaining / demoMaxTimer;
+        document.getElementById('arcProgress').style.strokeDashoffset = arcCircumference * (1 - arcPct);
+
+        const total = queues.reduce((a,b)=>a+b,0);
+        document.getElementById('queueTotal').textContent = total;
+        document.getElementById('queueData').textContent = queues.join(' · ');
+
+        queues.forEach((q, i) => {
+            const pct = Math.min((q / 15) * 100, 100);
+            const cls = queueClass(pct);
+            const col = queueColor(pct);
+            
+            const ql = document.getElementById(`ql${i+1}`);
+            ql.style.width = pct + '%'; 
+            ql.classList.remove('fill-green', 'fill-amber', 'fill-red');
+            ql.classList.add(cls);
+            
+            document.getElementById(`qv${i+1}`).textContent = q;
+            document.getElementById(`qv${i+1}`).style.color = col;
+            
+            const qbar = document.getElementById(`qbar${i+1}`);
+            qbar.style.width = pct + '%'; 
+            qbar.classList.remove('fill-green', 'fill-amber', 'fill-red');
+            qbar.classList.add(cls);
+        });
+
+        // Application of fixed formatting values
+        document.getElementById('densityData').textContent = formattedDensity;
+        document.getElementById('densityRingVal').textContent = formattedDensity;
+        document.getElementById('dsPeak').textContent = Math.max(...queues);
+        document.getElementById('dsAvg').textContent = (total/4).toFixed(1);
+
+        const densityPct = Math.min(densityNum / 15, 1);
+        document.getElementById('densityArc').style.strokeDashoffset = 220 * (1 - densityPct);
+
+        if (densityPct < 0.4) { document.getElementById('dsStatus').textContent = 'OPTIMAL'; document.getElementById('dsStatus').style.color = 'var(--neon-green)'; }
+        else if (densityPct < 0.7) { document.getElementById('dsStatus').textContent = 'MODERATE'; document.getElementById('dsStatus').style.color = 'var(--neon-amber)'; }
+        else { document.getElementById('dsStatus').textContent = 'CONGESTED'; document.getElementById('dsStatus').style.color = 'var(--neon-red)'; }
+
+        simStats.vehicles += Math.floor(Math.random() * 5);
+        document.getElementById('hVehicles').textContent = simStats.vehicles.toLocaleString();
+        document.getElementById('hThroughput').textContent = (80 + Math.floor(Math.random()*15)) + '%';
+        document.getElementById('hWaitAvg').textContent = (18 + Math.floor(Math.random()*12));
+    }
+
+    function overrideSignal(lane) {
+        fetch("/override/" + lane).catch(() => {
+            demoActive = lane;
+            demoTimer = 30;
+            demoMaxTimer = 30;
+        });
+        addLog(`MANUAL OVERRIDE → LANE ${lane+1} — ${dirLabels[lane]}`, 'override');
+        document.querySelectorAll('.override-btn').forEach((b,i) => {
+            b.classList.toggle('active-override', i === lane);
+        });
+    }
+
+    setInterval(updateDashboard, 1000);
+    updateDashboard();
+</script>
+</body>
+</html>

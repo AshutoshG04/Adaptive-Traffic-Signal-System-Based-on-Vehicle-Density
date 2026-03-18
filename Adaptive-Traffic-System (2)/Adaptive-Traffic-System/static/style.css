@@ -1,0 +1,91 @@
+/* Path: static/style.css */
+
+body {
+    margin: 0;
+    background: #0b1220;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #111827;
+    padding: 15px 30px;
+    border-bottom: 2px solid #1f2937;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.green { background: #16a34a; }
+.red { background: #dc2626; }
+
+.camera-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    padding: 20px;
+}
+
+.camera-card {
+    background: #111827;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+.camera-card img {
+    width: 100%;
+    border-radius: 8px;
+}
+
+.dashboard-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    padding: 20px;
+}
+
+.panel {
+    background: #111827;
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.signal-display {
+    display: flex;
+    justify-content: space-around;
+    margin: 20px 0;
+}
+
+.light {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #374151;
+}
+
+.light.green {
+    background: #22c55e;
+}
+
+button {
+    display: block;
+    margin: 10px 0;
+    padding: 8px;
+    width: 100%;
+    background: #2563eb;
+    border: none;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+}
